@@ -13,17 +13,13 @@
     <OutputPath>C:\Program Files\ReBuzz\Gear\Effects\</OutputPath>
   </PropertyGroup>
 
-  <!--
-    Copy BuzzGUI.Interfaces.dll and BuzzGUI.Common.dll from your ReBuzz
-    installation into the same folder as this .csproj, then build.
-  -->
   <ItemGroup>
     <Reference Include="BuzzGUI.Interfaces">
-      <HintPath>BuzzGUI.Interfaces.dll</HintPath>
+      <HintPath>C:\Program Files\ReBuzz\BuzzGUI.Interfaces.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="BuzzGUI.Common">
-      <HintPath>BuzzGUI.Common.dll</HintPath>
+      <HintPath>C:\Program Files\ReBuzz\BuzzGUI.Common.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
