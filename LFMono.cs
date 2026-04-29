@@ -66,7 +66,7 @@ namespace LFMono
             set => state.HFLevel = value;
         }
 
-        // ── DSP state: two cascaded biquad stages × two channels × LP and HP ─
+        // ── DSP state: two cascaded biquad stages x two channels x LP and HP ─
         // [stage 0|1][channel L=0, R=1]
         double[,] lpx1 = new double[2,2], lpx2 = new double[2,2];
         double[,] lpy1 = new double[2,2], lpy2 = new double[2,2];
@@ -76,10 +76,10 @@ namespace LFMono
         double b0lp, b1lp, b2lp, a1lp, a2lp;
         double b0hp, b1hp, b2hp, a1hp, a2hp;
 
-        int _sampleRate = 0; // 0 = needs recalc
+        int _sampleRate    = 0; // 0 = needs recalc
+        int _silenceFrames = 0; // consecutive silent frames counted
 
         // ── Work (called on audio thread) ─────────────────────────────────────
-        // ReBuzz effect signature: output and input are separate arrays
         public bool Work(Sample[] output, Sample[] input, int n, WorkModes mode)
         {
             // Detect sample rate changes (MasterInfo only valid inside Work)
@@ -91,6 +91,32 @@ namespace LFMono
             }
 
             if (mode == WorkModes.WM_NOIO) return false;
+
+            // Check if the input buffer is silent. Returning false tells ReBuzz
+            // we produced no output, allowing it to skip us and anything downstream
+            // — which is the real cause of high CPU when upstream machines are muted.
+            // We allow ~100ms of drain time so filter tails aren't cut off abruptly.
+            bool inputSilent = true;
+            for (int i = 0; i < n; i++)
+            {
+                if (input[i].L != 0f || input[i].R != 0f) { inputSilent = false; break; }
+            }
+
+            if (inputSilent)
+            {
+                _silenceFrames += n;
+                if (_silenceFrames >= _sampleRate / 10) // 100ms drain elapsed
+                {
+                    ClearState();
+                    return false; // signal to ReBuzz: no output, skip downstream
+                }
+                // Still within drain window — keep processing so the filter tail
+                // decays naturally rather than clicking off
+            }
+            else
+            {
+                _silenceFrames = 0;
+            }
 
             float lfGain = state.LFLevel * 0.01f;
             float hfGain = state.HFLevel * 0.01f;
@@ -104,7 +130,7 @@ namespace LFMono
                 double lpL1 = BiquadLP(0, 0, sL), lpR1 = BiquadLP(0, 1, sR);
                 double hpL1 = BiquadHP(0, 0, sL), hpR1 = BiquadHP(0, 1, sR);
 
-                // Stage 2 → completes LR4
+                // Stage 2 -> completes LR4
                 double lpL  = BiquadLP(1, 0, lpL1), lpR  = BiquadLP(1, 1, lpR1);
                 double hpL  = BiquadHP(1, 0, hpL1), hpR  = BiquadHP(1, 1, hpR1);
 
@@ -145,7 +171,7 @@ namespace LFMono
             double w0    = 2.0 * Math.PI * fc / _sampleRate;
             double cosW0 = Math.Cos(w0);
             double sinW0 = Math.Sin(w0);
-            const double Q = 0.7071067811865476; // 1/√2  → Butterworth
+            const double Q = 0.7071067811865476; // 1/sqrt(2) -> Butterworth
             double alpha   = sinW0 / (2.0 * Q);
 
             // Low-pass
@@ -164,7 +190,11 @@ namespace LFMono
             a1hp = -2.0 * cosW0         / a0hp;
             a2hp = (1.0 - alpha)         / a0hp;
 
-            // Flush state to avoid transients
+            ClearState();
+        }
+
+        void ClearState()
+        {
             Array.Clear(lpx1,0,4); Array.Clear(lpx2,0,4);
             Array.Clear(lpy1,0,4); Array.Clear(lpy2,0,4);
             Array.Clear(hpx1,0,4); Array.Clear(hpx2,0,4);
